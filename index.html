@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>كوكبات النجوم الرمضانية</title>
+    <link href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root { --bg-dark: #02050a; }
+        body { margin: 0; background: var(--bg-dark); color: white; font-family: 'Amiri', serif; overflow: hidden; height: 100vh; user-select: none; }
+
+        .universe {
+            position: relative; width: 100%; height: 100vh;
+            background: radial-gradient(circle at center, #0a1633 0%, #02050a 100%);
+        }
+
+        /* التحكم في ارتفاع العنوان من هنا */
+        .header-title {
+            position: absolute; 
+            top: 1%; /* غير هذا الرقم لرفع أو تنزيل الكلمة */
+            width: 100%; 
+            text-align: center; 
+            z-index: 5; 
+            pointer-events: none;
+        }
+
+        .bg-star {
+            position: absolute; background: white; border-radius: 50%;
+            pointer-events: none; animation: pulse 3s infinite ease-in-out;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 0.2; transform: scale(1); }
+            50% { opacity: 0.6; transform: scale(1.2); }
+        }
+
+        #constellation-svg {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1;
+        }
+
+        .day-star {
+            position: absolute; cursor: pointer; z-index: 10;
+            display: flex; flex-direction: column; align-items: center;
+            transform: translate(-50%, -50%); transition: all 0.3s ease;
+        }
+        
+        .day-star.available .star-img { filter: drop-shadow(0 0 15px rgba(255, 255, 255, 0.8)); opacity: 1; }
+        .day-star.available:hover { transform: translate(-50%, -50%) scale(1.2); }
+
+        .day-star.locked { cursor: help; opacity: 0.35; }
+        .day-star.locked .star-img { filter: grayscale(1) brightness(0.7); }
+
+        .star-img { width: 45px; height: 45px; object-fit: contain; }
+
+        .star-number {
+            font-size: 11px; margin-top: -5px;
+            background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(4px);
+            padding: 1px 7px; border-radius: 10px; font-family: sans-serif;
+        }
+
+        #prayer-modal {
+            position: fixed; top: 50%; left: 50%;
+            transform: translate(-50%, -50%) scale(0);
+            width: 75%; max-width: 320px;
+            background: rgba(5, 11, 26, 0.98); border: 1px solid rgba(255, 255, 255, 0.2);
+            padding: 25px; text-align: center; border-radius: 20px;
+            z-index: 1000; transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        #prayer-modal.open { transform: translate(-50%, -50%) scale(1); }
+        #prayer-text { font-size: 1.35rem; line-height: 1.7; }
+        .btn-close { background: white; color: black; border: none; padding: 10px; border-radius: 10px; cursor: pointer; font-weight: bold; margin-top: 20px; width: 100%; font-family: 'Amiri', serif; }
+        .modal-day-label { color: #ffd700; font-size: 0.9rem; margin-bottom: 5px; display: block; }
+        /* نافذة التنبيه المخصصة */
+#custom-alert {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(100px);
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    padding: 12px 25px;
+    border-radius: 30px;
+    color: white;
+    font-size: 0.9rem;
+    z-index: 2000;
+    transition: transform 0.4s ease, opacity 0.4s ease;
+    opacity: 0;
+    pointer-events: none;
+    white-space: nowrap;
+}
+#custom-alert.show {
+    transform: translateX(-50%) translateY(0);
+    opacity: 1;
+}
+    </style>
+</head>
+<body>
+    <div id="custom-alert">صبرًا جميلًا.. هذه النجمة ستضيء في وقتها المكتوب ✨</div>
+    <audio id="click-sound" src="ding.mp3" preload="auto"></audio>
+
+    <div class="universe" id="universe">
+        <svg id="constellation-svg"></svg>
+        <div class="header-title">
+            <h1 style="font-weight: normal; margin-bottom: 2px; font-size: 1.8rem;">كوكبات رمضان ✨</h1>
+            <p style="opacity: 0.8; margin: 0; font-size: 1rem;">30 يوماً ... 30 دعاءً</p>
+        </div>
+    </div>
+
+    <div id="prayer-modal">
+        <span class="modal-day-label" id="modal-day-text"></span>
+        <div id="prayer-text"></div>
+        <button class="btn-close" onclick="closeModal()">تقبل الله</button>
+    </div>
+
+    <script>
+        const universe = document.getElementById('universe');
+        const svgLayer = document.getElementById('constellation-svg');
+        const prayers = [
+            "اللهم اجعل بداية رمضان بداية خير لنا، واغفر لنا ما مضى وبارك لنا فيما هو آتٍ.",
+            "اللهم طهّر قلوبنا من كل همّ، واملأها نورًا وإيمانًا ويقينًا.",
+            "اللهم ارزقنا صيامًا مقبولًا وقيامًا مشكورًا وذنبًا مغفورًا.",
+            "اللهم قرّبنا إليك، وأبعد عنا كل ما يبعدنا عنك.",
+            "اللهم اجعل القرآن ربيع قلوبنا ونور صدورنا وجلاء همومنا.",
+            "اللهم ارزقنا حسن الخاتمة وبلّغنا ليلة القدر ونحن في أفضل حال.",
+            "اللهم اكتب لنا في هذا الشهر فرجًا لكل هم، وشفاءً لكل مريض.",
+            "اللهم اجعلنا من عتقائك من النار، ومن المقبولين الفائزين.",
+            "اللهم أصلح لنا شأننا كله، ولا تكلنا إلى أنفسنا طرفة عين.",
+            "اللهم ارزقنا صدق التوكل عليك، وحسن الظن بك.",
+            "اللهم ارزقنا لذة الطاعة وحلاوة الإيمان.",
+            "اللهم اجبر خواطرنا، ويسّر أمورنا، وحقق لنا ما نتمنى.",
+            "اللهم اجعل لنا في هذا الشهر نصيبًا من كل خير تنزله.",
+            "اللهم اغفر لآبائنا وأمهاتنا، وارحم من سبقونا إليك.",
+            "اللهم اجعلنا ممن نظرت إليهم فرحمتهم وغفرت لهم.",
+            "اللهم ارزقنا الإخلاص في القول والعمل.",
+            "اللهم انصر المظلومين، وارفع البلاء عن المسلمين.",
+            "اللهم اكتب لنا القبول في الأرض، والمغفرة في السماء.",
+            "اللهم ارزقنا قيام ليلة القدر إيمانًا واحتسابًا.",
+            "اللهم بلغنا العشر الأواخر وأعنّا فيها على ذكرك وشكرك وحسن عبادتك.",
+            "اللهم اجعلنا من المقبولين في ليلة القدر، واكتب لنا فيها خير الأقدار.",
+            "اللهم ارزقنا دعوة لا تُرد، ورزقًا لا يُعد، وبابًا للجنة لا يُسد.",
+            "اللهم بدّل أحزاننا أفراحًا، وهمومنا راحةً وسكينة.",
+            "اللهم اجعل هذا الشهر شاهدًا لنا لا علينا.",
+            "اللهم اجعلنا ممن يُقال لهم: ادخلوا الجنة بما كنتم تعملون.",
+            "اللهم ارزقنا قلبًا سليمًا ولسانًا ذاكرًا.",
+            "اللهم إن كانت هذه ليلة القدر فاكتب لنا فيها الخير كله.",
+            "اللهم تقبل منا صيامنا وقيامنا وسائر أعمالنا.",
+            "اللهم لا تجعل رمضان ينقضي إلا وقد غفرت لنا ما تقدم من ذنبنا وما تأخر.",
+            "اللهم اختم لنا رمضان برضاك، واكتبنا من الفائزين المعتوقين من النار."
+        ];
+
+        function getRamadanDay() {
+            const startDate = new Date(2026, 1, 19); 
+            const today = new Date();
+            today.setHours(0,0,0,0);
+            return Math.floor((today - startDate) / (1000*60*60*24)) + 1;
+        }
+
+        const currentRamadanDay = getRamadanDay();
+
+        // خلفية النجوم
+        for (let i = 0; i < 150; i++) {
+            const s = document.createElement('div');
+            s.className = 'bg-star';
+            const size = Math.random() * 2 + 1 + 'px';
+            s.style.width = size; s.style.height = size;
+            s.style.top = Math.random() * 100 + '%';
+            s.style.left = Math.random() * 100 + '%';
+            s.style.animationDelay = Math.random() * 3 + 's';
+            universe.appendChild(s);
+        }
+
+        const constellations = [
+            [{x:15,y:20}, {x:25,y:15}, {x:32,y:28}, {x:20,y:35}, {x:10,y:30}, {x:5,y:15}],
+            [{x:70,y:15}, {x:85,y:20}, {x:80,y:35}, {x:65,y:30}, {x:60,y:15}, {x:90,y:10}],
+            [{x:45,y:45}, {x:55,y:40}, {x:60,y:55}, {x:50,y:65}, {x:40,y:58}, {x:35,y:48}],
+            [{x:15,y:70}, {x:25,y:80}, {x:20,y:90}, {x:10,y:85}, {x:5,y:75}, {x:30,y:70}],
+            [{x:75,y:70}, {x:85,y:75}, {x:90,y:90}, {x:70,y:85}, {x:65,y:75}, {x:80,y:60}]
+        ];
+
+        let starCount = 1;
+        constellations.forEach(group => {
+            group.forEach((pos, i) => {
+                const starDiv = document.createElement('div');
+                const isLocked = starCount > currentRamadanDay;
+                starDiv.className = `day-star ${isLocked ? 'locked' : 'available'}`;
+                starDiv.style.left = pos.x + '%';
+                starDiv.style.top = pos.y + '%';
+                const imgNum = Math.floor(Math.random() * 5) + 1;
+                starDiv.innerHTML = `<img src="star-${imgNum}.svg" class="star-img"><div class="star-number">${starCount}</div>`;
+
+                if (!isLocked) {
+                    const d = starCount;
+                    starDiv.onclick = () => openModal(d);
+                // ابحث عن السطر الخاص بـ starDiv.onclick في حالة الـ Locked واستبدله بهذا:
+} else {
+    starDiv.onclick = () => {
+        const alertBox = document.getElementById('custom-alert');
+        alertBox.classList.add('show');
+        
+        // تختفي تلقائياً بعد 3 ثوانٍ
+        setTimeout(() => {
+            alertBox.classList.remove('show');
+        }, 3000);
+    };
+}
+
+                universe.appendChild(starDiv);
+                if (i < group.length - 1) {
+                    const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                    line.setAttribute("x1", pos.x + "%"); line.setAttribute("y1", pos.y + "%");
+                    line.setAttribute("x2", group[i+1].x + "%"); line.setAttribute("y2", group[i+1].y + "%");
+                    line.setAttribute("stroke", "rgba(255,255,255,0.08)"); line.setAttribute("stroke-width", "0.8");
+                    line.setAttribute("stroke-dasharray", "5,5"); svgLayer.appendChild(line);
+                }
+                starCount++;
+            });
+        });
+
+        function openModal(day) {
+            const sound = document.getElementById('click-sound');
+            if(sound) { sound.currentTime = 0; sound.play().catch(e => {}); }
+            document.getElementById('modal-day-text').innerText = "دعاء اليوم " + day + " من رمضان";
+            document.getElementById('prayer-text').innerText = prayers[day - 1];
+            document.getElementById('prayer-modal').classList.add('open');
+        }
+        function closeModal() { document.getElementById('prayer-modal').classList.remove('open'); }
+    </script>
+</body>
+</html>
